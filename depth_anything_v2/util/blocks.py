@@ -1,11 +1,6 @@
 import torch.nn as nn
 
-# 包含多个卷积层 
-'''
-in_shape = [256, 512, 1024, 1024]
-out_shape = 256
-各卷积层在调整通道数的同时增强局部特征提取。
-'''
+
 def _make_scratch(in_shape, out_shape, groups=1, expand=False):
     scratch = nn.Module()
 
@@ -21,7 +16,7 @@ def _make_scratch(in_shape, out_shape, groups=1, expand=False):
         out_shape3 = out_shape * 4
         if len(in_shape) >= 4:
             out_shape4 = out_shape * 8
-    # 空间分辨率不变，通道数变化
+
     scratch.layer1_rn = nn.Conv2d(in_shape[0], out_shape1, kernel_size=3, stride=1, padding=1, bias=False, groups=groups)
     scratch.layer2_rn = nn.Conv2d(in_shape[1], out_shape2, kernel_size=3, stride=1, padding=1, bias=False, groups=groups)
     scratch.layer3_rn = nn.Conv2d(in_shape[2], out_shape3, kernel_size=3, stride=1, padding=1, bias=False, groups=groups)
@@ -146,7 +141,7 @@ class FeatureFusionBlock(nn.Module):
         else:
             modifier = {"size": size}
 
-        output = nn.functional.interpolate(output, **modifier, mode="bilinear", align_corners=self.align_corners) # 上采样
+        output = nn.functional.interpolate(output, **modifier, mode="bilinear", align_corners=self.align_corners)
         
         output = self.out_conv(output)
 

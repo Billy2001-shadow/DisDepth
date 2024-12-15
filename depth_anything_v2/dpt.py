@@ -38,7 +38,7 @@ class ConvBlock(nn.Module):
 class DPTHead(nn.Module):
     def __init__(
         self, 
-        in_channels,   # self.pretrained.embed_dim = 1024 
+        in_channels, 
         features=256, 
         use_bn=False, 
         out_channels=[256, 512, 1024, 1024], 
@@ -110,8 +110,7 @@ class DPTHead(nn.Module):
             nn.Conv2d(head_features_1 // 2, head_features_2, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
             nn.Conv2d(head_features_2, 1, kernel_size=1, stride=1, padding=0),
-            nn.ReLU(True),
-            nn.Identity(),
+            nn.Sigmoid()
         )
     
     def forward(self, out_features, patch_h, patch_w):
@@ -122,30 +121,30 @@ class DPTHead(nn.Module):
                 readout = cls_token.unsqueeze(1).expand_as(x)
                 x = self.readout_projects[i](torch.cat((x, readout), -1))
             else:
-                x = x[0] # here
-            # torch.Size([1, 1813, 1024])
-            x = x.permute(0, 2, 1).reshape((x.shape[0], x.shape[-1], patch_h, patch_w)) # 将序列长度重新组织成高度和宽度(相当于flatten的逆操作) 变为torch.Size([1, 1024, 37, 49])
-            # x = torch.Size([1, 1024, 37, 49])
-            x = self.projects[i](x) # x = torch.Size([1, 256, 37, 49]) torch.Size([1, 512, 37, 49])torch.Size([1, 1024, 37, 49])  torch.Size([1, 1024, 37, 49])
-            x = self.resize_layers[i](x)  # torch.Size([1, 256, 148, 196]) torch.Size([1, 512, 74, 98]) torch.Size([1, 1024, 37, 49]) torch.Size([1, 1024, 19, 25])
+                x = x[0]
+            
+            x = x.permute(0, 2, 1).reshape((x.shape[0], x.shape[-1], patch_h, patch_w))
+            
+            x = self.projects[i](x)
+            x = self.resize_layers[i](x)
             
             out.append(x)
         
         layer_1, layer_2, layer_3, layer_4 = out
         
-        layer_1_rn = self.scratch.layer1_rn(layer_1) # torch.Size([1, 256, 148, 196])
-        layer_2_rn = self.scratch.layer2_rn(layer_2) # torch.Size([1, 256, 74, 98])
-        layer_3_rn = self.scratch.layer3_rn(layer_3) # torch.Size([1, 256, 37, 49])
-        layer_4_rn = self.scratch.layer4_rn(layer_4) # torch.Size([1, 256, 19, 25])
+        layer_1_rn = self.scratch.layer1_rn(layer_1)
+        layer_2_rn = self.scratch.layer2_rn(layer_2)
+        layer_3_rn = self.scratch.layer3_rn(layer_3)
+        layer_4_rn = self.scratch.layer4_rn(layer_4)
         
-        path_4 = self.scratch.refinenet4(layer_4_rn, size=layer_3_rn.shape[2:])           # torch.Size([1, 256, 37, 49])     
-        path_3 = self.scratch.refinenet3(path_4, layer_3_rn, size=layer_2_rn.shape[2:])   # torch.Size([1, 256, 74, 98])
-        path_2 = self.scratch.refinenet2(path_3, layer_2_rn, size=layer_1_rn.shape[2:])   # torch.Size([1, 256, 148, 196])
-        path_1 = self.scratch.refinenet1(path_2, layer_1_rn)                              # torch.Size([1, 256, 296, 392])
+        path_4 = self.scratch.refinenet4(layer_4_rn, size=layer_3_rn.shape[2:])        
+        path_3 = self.scratch.refinenet3(path_4, layer_3_rn, size=layer_2_rn.shape[2:])
+        path_2 = self.scratch.refinenet2(path_3, layer_2_rn, size=layer_1_rn.shape[2:])
+        path_1 = self.scratch.refinenet1(path_2, layer_1_rn)
         
-        out = self.scratch.output_conv1(path_1) # torch.Size([1, 128, 296, 392])
-        out = F.interpolate(out, (int(patch_h * 14), int(patch_w * 14)), mode="bilinear", align_corners=True) # torch.Size([1, 128, 518, 686])
-        out = self.scratch.output_conv2(out)   # torch.Size([1, 1, 518, 686])
+        out = self.scratch.output_conv1(path_1)
+        out = F.interpolate(out, (int(patch_h * 14), int(patch_w * 14)), mode="bilinear", align_corners=True)
+        out = self.scratch.output_conv2(out)
         
         return out
 
@@ -158,7 +157,7 @@ class DepthAnythingV2(nn.Module):
         out_channels=[256, 512, 1024, 1024], 
         use_bn=False, 
         use_clstoken=False,
-        max_depth=10.0
+        max_depth=20.0
     ):
         super(DepthAnythingV2, self).__init__()
         
@@ -168,32 +167,29 @@ class DepthAnythingV2(nn.Module):
             'vitl': [4, 11, 17, 23], 
             'vitg': [9, 19, 29, 39]
         }
+        
         self.max_depth = max_depth
         
         self.encoder = encoder
         self.pretrained = DINOv2(model_name=encoder)
-        # # 加载权重
-        self.pretrained_weights_path = "/home/chenwu/DisDepth/pretrained/dinov2_vits14_pretrain.pth"
-        state_dict = torch.load(self.pretrained_weights_path, map_location="cpu")  # 或 'cuda'
-        self.pretrained.load_state_dict(state_dict, strict=False)
-
-
+        
         self.depth_head = DPTHead(self.pretrained.embed_dim, features, use_bn, out_channels=out_channels, use_clstoken=use_clstoken)
     
     def forward(self, x):
-        patch_h, patch_w = x.shape[-2] // 14, x.shape[-1] // 14 # 518 // 14 = 37, 686 // 14 = 49
+        patch_h, patch_w = x.shape[-2] // 14, x.shape[-1] // 14
         
         features = self.pretrained.get_intermediate_layers(x, self.intermediate_layer_idx[self.encoder], return_class_token=True)
-
+        
         depth = self.depth_head(features, patch_h, patch_w) * self.max_depth
         
         return depth.squeeze(1)
     
     @torch.no_grad()
     def infer_image(self, raw_image, input_size=518):
-        image, (h, w) = self.image2tensor(raw_image, input_size) # torch.Size([1, 3, 518, 686]) (h,w)是原图分辨率
-        depth = self.forward(image) # torch.Size([1, 518, 686])
-    
+        image, (h, w) = self.image2tensor(raw_image, input_size)
+        
+        depth = self.forward(image)
+        
         depth = F.interpolate(depth[:, None], (h, w), mode="bilinear", align_corners=True)[0, 0]
         
         return depth.cpu().numpy()
