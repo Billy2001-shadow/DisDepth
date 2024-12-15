@@ -2,14 +2,14 @@
 now=$(date +"%Y%m%d_%H%M%S")
 
 epoch=20
-bs=24
+bs=10
 lr=0.000005
 encoder=vits
 dataset=nyu # vkitti hypersim
 img_size=518
 min_depth=0.001
 max_depth=10 # 80 for virtual kitti 20 for hypersim
-pretrained_from=../checkpoints/depth_anything_v2_${encoder}.pth
+pretrained_from=pretrained/depth_anything_v2_${encoder}.pth
 save_path=exp/nyu # exp/vkitti exp/hypersim
 
 mkdir -p $save_path
