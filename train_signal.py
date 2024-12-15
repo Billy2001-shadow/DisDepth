@@ -27,10 +27,10 @@ parser.add_argument('--img-size', default=518, type=int)
 parser.add_argument('--min-depth', default=0.001, type=float)
 parser.add_argument('--max-depth', default=10, type=float)
 parser.add_argument('--epochs', default=40, type=int)
-parser.add_argument('--bs', default=16, type=int)
+parser.add_argument('--bs', default=10, type=int)
 parser.add_argument('--lr', default=0.000005, type=float)
-parser.add_argument('--pretrained-from', type=str)
-parser.add_argument('--save-path', type=str, required=True)
+parser.add_argument('--pretrained-from',default="pretrained/depth_anything_v2_vits.pth", type=str)
+parser.add_argument('--save-path', default='exp/nyu',type=str)
 
 def main():
     args = parser.parse_args()
@@ -69,6 +69,7 @@ def main():
     model = DepthAnythingV2(**{**model_configs[args.encoder], 'max_depth': args.max_depth})
 
     if args.pretrained_from:
+        # model.load_state_dict(torch.load(args.pretrained_from, map_location='cpu'), strict=False)
         model.load_state_dict({k: v for k, v in torch.load(args.pretrained_from, map_location='cpu').items() if 'pretrained' in k}, strict=False)
 
     model.cuda()
@@ -90,9 +91,10 @@ def main():
         
         model.train()
         total_loss = 0
+
         for i, sample in enumerate(trainloader):
             optimizer.zero_grad()
-            img, depth, valid_mask = sample['image'].cuda(), sample['depth'].cuda(), sample['valid_mask'].cuda()
+            img, depth, valid_mask = sample['image'].cuda(), sample['depth'].cuda(), sample['valid_mask'].cuda() #valid_mask和 depth是对应的，depth>0的地方是1，否则是0
 
             if random.random() < 0.5:
                 img = img.flip(-1)
@@ -168,3 +170,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
