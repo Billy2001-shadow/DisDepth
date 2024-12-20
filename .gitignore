@@ -1,4 +1,5 @@
 /pretrained/
+/checkpoints/
 /wandb/
 /exp/
 # Byte-compiled / optimized / DLL files
