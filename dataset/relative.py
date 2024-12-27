@@ -6,6 +6,8 @@ from torchvision.transforms import Compose
 
 from dataset.transform import Resize, NormalizeImage, PrepareForNet, Crop, DepthToDisparity
 
+from PIL import Image
+
 # ['BlendMVS', 'Holopix50k', 'HRWSI','MegaDepth','ReDWeb']
 class Relative(Dataset):
     def __init__(self, filelist_path, mode, size=(224, 224)):
@@ -33,20 +35,21 @@ class Relative(Dataset):
         ])
     
     def __getitem__(self, item):
-        
+
         img_path = self.filelist[item].split()[0]
         depth_path = self.filelist[item].split()[1]
-       
-        # 深度图除以1000才是真实尺度下的深度
-        image = cv2.imread(img_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255.0 
-    
+
+        sample = {}
+        
+
+        image = Image.open(img_path)    
+        image = np.asarray(image, dtype=np.float32) / 255.0
+        sample = self.transform({'image': image})
+        
         depth = np.load(depth_path).astype('float32')
-
-
-        sample = self.transform({'image': image})['image']
+    
         sample['image'] = torch.from_numpy(sample['image'])
-        sample['depth'] = depth
+        sample['depth'] = torch.from_numpy(depth)
         
       
         sample['image_path'] = img_path
@@ -56,3 +59,18 @@ class Relative(Dataset):
 
     def __len__(self):
         return len(self.filelist)
+    
+
+if __name__ == '__main__':
+    from torch.utils.data import DataLoader
+
+    trainset = Relative('dataset/splits/relative_depth_train.txt', 'train',(224,224))
+    print(len(trainset))
+    sample = trainset[0]
+    print(sample['image'].shape, sample['depth'].shape, sample['image_path'])
+
+    trainloader = DataLoader(trainset, 32, pin_memory=True, num_workers=16,shuffle=True)
+
+    for i, sample in enumerate(trainloader):
+        img, depth  = sample['image'].cuda(), sample['depth'].cuda() 
+        img_path = sample['image_path']
