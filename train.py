@@ -17,18 +17,19 @@ from dataset.nyu2 import NYU
 from dataset.DIML import DIML
 from midas_loss import ScaleAndShiftInvariantLoss
 from util.utils import init_log
-
+from Depth_Anything_V2.depth_anything_v2.dpt import DepthAnythingV2
 parser = argparse.ArgumentParser(description='Depth Anything V2 for Metric Depth Estimation')
 
 
 parser.add_argument('--img-size', default=224, type=int)
-parser.add_argument('--epochs', default=20, type=int)
-parser.add_argument('--batch_size', default=64,type=int)
-parser.add_argument('--lr', default=0.000005, type=float) # 调一调学习率是否可以加快收敛呢？ 0.000005 0.000008
+parser.add_argument('--epochs', default=40, type=int)
+parser.add_argument('--batch_size', default=32,type=int)
+parser.add_argument('--lr', default=0.000008, type=float) # 调一调学习率是否可以加快收敛呢？ 0.000005 0.000008
 
 parser.add_argument('--save-path', default='exp/tinyvit',type=str)
 parser.add_argument('--pretrained-from', default='/home/chenwu/DisDepth/checkpoints/tiny_vit_5m_22kto1k_distill.pth', type=str)
 
+parser.add_argument('--encoder', type=str, default='vitl', choices=['vits', 'vitb', 'vitl', 'vitg'])
 def main():
     args = parser.parse_args()
 
@@ -56,7 +57,7 @@ def main():
     # dataset, dataloader
     size = (args.img_size, args.img_size)
     trainset = DIML('dataset/splits/DIML/filtered_train_files.txt', 'train', size=size)
-    trainloader = DataLoader(trainset, batch_size=args.batch_size, pin_memory=True, num_workers=16)
+    trainloader = DataLoader(trainset, batch_size=args.batch_size, pin_memory=True, num_workers=16,shuffle=True)
 
     # valset = NYU('dataset/splits/nyu/val.txt', 'val', size=size)
     # valloader = DataLoader(valset, batch_size=1, pin_memory=True, num_workers=4)
@@ -66,10 +67,21 @@ def main():
     # model = torch.nn.DataParallel(model)
 
 
-    if args.pretrained_from:
-        model.pretrained.load_state_dict(torch.load(args.pretrained_from)["model"])
+    # if args.pretrained_from:
+    #     model.pretrained.load_state_dict(torch.load(args.pretrained_from)["model"])
         # model.load_state_dict({k: v for k, v in torch.load(args.pretrained_from, map_location='cpu').items() if 'pretrained' in k}, strict=False)
-
+    DEVICE = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+    
+    model_configs = {
+        'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
+        'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
+        'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
+        'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
+    }
+    
+    depth_anything = DepthAnythingV2(**model_configs[args.encoder])
+    depth_anything.load_state_dict(torch.load(f'checkpoints/depth_anything_v2_{args.encoder}.pth', map_location='cpu'))
+    depth_anything = depth_anything.to(DEVICE).eval()
     
 
     criterion = ScaleAndShiftInvariantLoss().cuda()
@@ -91,10 +103,12 @@ def main():
             if random.random() < 0.5:
                 img = img.flip(-1)
                 depth = depth.flip(-1)
-            
+                valid_mask = valid_mask.flip(-1)
+
             pred = model(img)
-            depth = depth.squeeze(1)
-            
+            # depth = depth.squeeze(1)
+            with torch.no_grad():
+                depth = depth_anything(img)
             loss = criterion(pred, depth, valid_mask)
 
             loss.backward()
@@ -112,8 +126,7 @@ def main():
                 logger.info('epoch: {}/{}'.format(epoch, args.epochs))
                 logger.info('Iter: {}/{}, LR: {:.7f}, Loss: {:.3f}'.format(i, len(trainloader), optimizer.param_groups[0]['lr'], loss.item()))
 
-            # 同步 CUDA 操作
-            torch.cuda.synchronize()
+            
         checkpoint = {
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),

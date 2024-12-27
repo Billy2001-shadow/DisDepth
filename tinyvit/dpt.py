@@ -40,13 +40,17 @@ class DPTHead(nn.Module):
         in_channels=[128, 160, 320, 320], 
         out_channels=[48, 96, 192, 384], 
         aligned_channels=64,
+        spatial_sizes=[(60, 80), (30, 40), (15, 20), (15, 20)],
+        upsample_factors=[4, 4, 4, 2],
+        input_size=(480, 640),
         use_bn=False, 
     ):
         super(DPTHead, self).__init__()
         
         self.embed_dim = in_channels
         self.out_channels = out_channels
-        self.spatial_sizes = [(28, 28), (14, 14), (7, 7), (7, 7)]  # 四层征图的尺寸
+        self.spatial_sizes = spatial_sizes  # 四层征图的尺寸
+        self.input_size = input_size
 
 
         # 将embed_dim通道数的特征图映射到out_channels通道数
@@ -56,7 +60,7 @@ class DPTHead(nn.Module):
         ])
         
         # 对四层特征图分别进行 四倍、四倍、四倍、两倍 上采样 因为最后两层特征图的尺寸相同，所以只对最后一层进行两倍上采样，这样四层特征图的size分别就是两倍的关系
-        self.upsample_factors = [4, 4, 4, 2]  # 每层的上采样倍数
+        self.upsample_factors = upsample_factors # 每层的上采样倍数
         self.resize_layers = nn.ModuleList([
             # 输入输出通道相同，该层的作用是上采样(保持通道不变)
             nn.ConvTranspose2d(
@@ -123,7 +127,7 @@ class DPTHead(nn.Module):
         path_1 = self.scratch.refinenet1(path_2, layer_1_rn)
         
         out = self.scratch.output_conv1(path_1)
-        out = F.interpolate(out, (224, 224), mode="bilinear", align_corners=True)
+        out = F.interpolate(out, self.input_size, mode="bilinear", align_corners=True)
         out = self.scratch.output_conv2(out)
         
         return out
@@ -132,46 +136,42 @@ class DPTHead(nn.Module):
 class TinyVitDpt(nn.Module):
     def __init__(
         self, 
-        features=64, 
+        config,
         embed_dims=[64, 128, 160, 320], 
+        features=64, 
+        in_channels=[128, 160, 320, 320],
         out_channels=[48, 96, 192, 384], 
+        num_heads=[2, 4, 5, 10],
+        window_sizes=[7, 7, 14, 7],
+        drop_path_rate=0.0,
         use_bn=False, 
-        max_depth=10.0
     ):
         super(TinyVitDpt, self).__init__()
         
-        self.max_depth = max_depth
         
-        self.pretrained = TinyViT(img_size=224,
-            in_chans=3,
+        self.input_size = (config.input_height, config.input_width)
+        # 修改一下img_size=224 
+        self.pretrained = TinyViT(img_size=self.input_size,  # 480 640
             embed_dims=embed_dims, # 5M
-            depths=[2, 2, 6, 2],
-            num_heads=[2, 4, 5, 10],
-            window_sizes=[7, 7, 14, 7],
+            num_heads=num_heads,
+            window_sizes=window_sizes,
+            drop_path_rate=drop_path_rate,
         )
+
+        w,h = self.input_size
+        spatial_sizes=[(h//8, w//8), (h//16, w//16), (h//32, w//32), (h//32, w//32)] # 480 640 -> [(60, 80), (30, 40), (15, 20), (15, 20)],
+        upsample_factors=[4, 4, 4, 2]                                        #            [(240, 320), (120, 160), (60, 80), (30, 40)]
+        self.depth_head = DPTHead(in_channels,out_channels,features,spatial_sizes,upsample_factors,self.input_size,use_bn)
         
-        # ckpt_path = '/home/chenwu/DisDepth/checkpoints/tiny_vit_5m_22kto1k_distill.pth'
-        # state_dict = torch.load(ckpt_path)
-        # # 检查并提取正确的子字典
-        # if 'model' in state_dict:
-        #     state_dict = state_dict['model']
-        # self.pretrained.load_state_dict(state_dict)
-        
-        self.depth_head = DPTHead(aligned_channels=features, use_bn=use_bn)
-    
+      
     def forward(self, x):
-        
         features_extraction = self.pretrained(x)
-        
-
         depth = self.depth_head(features_extraction) 
-
         depth = F.relu(depth)
-        
-        return depth.squeeze(1)
+        return depth
     
     @torch.no_grad()
-    def infer_image(self, raw_image, input_size=518):
+    def infer_image(self, raw_image, input_size=224):
         image, (h, w) = self.image2tensor(raw_image, input_size)
         
         depth = self.forward(image)
@@ -180,15 +180,14 @@ class TinyVitDpt(nn.Module):
         
         return depth.cpu().numpy()
     
-
-    def image2tensor(self, raw_image, input_size=518):        
+    def image2tensor(self, raw_image, input_size=224):        
         transform = Compose([
             Resize(
                 width=input_size,
                 height=input_size,
                 resize_target=False,
-                keep_aspect_ratio=False, # True
-                ensure_multiple_of=14, 
+                keep_aspect_ratio=False, # 保持宽高比 True
+                ensure_multiple_of=14,
                 resize_method='lower_bound',
                 image_interpolation_method=cv2.INTER_CUBIC,
             ),
@@ -207,4 +206,3 @@ class TinyVitDpt(nn.Module):
         image = image.to(DEVICE)
         
         return image, (h, w)
-    

@@ -16,7 +16,8 @@ from Depth_Anything_V2.depth_anything_v2.dpt import DepthAnythingV2
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Depth Anything V2')
     
-    parser.add_argument('--img-path', default='nyu2_train.txt',type=str)
+    # parser.add_argument('--img-path', default='nyu2_train.txt',type=str)
+    parser.add_argument('--img-path', default='rgb_00017.jpg',type=str)
     parser.add_argument('--input-size', type=int, default=224)
     parser.add_argument('--outdir', type=str, default='./vis_depth')
     
@@ -60,10 +61,10 @@ if __name__ == '__main__':
         
         depth = depth_anything.infer_image(raw_image, args.input_size) # (H, W)
         
-        depth = np.squeeze(depth,axis=0) # 直接保存为npy文件  224*224
+        depth = np.squeeze(depth,axis=0) # 直接保存为npy文件  224*224 Max=521.13763 Min=18.572212
 
         # 获取保存目录和文件名
-        save_dir = os.path.dirname(filename)
+        save_dir = os.path.dirname(filename) 
         save_filename = os.path.splitext(os.path.basename(filename))[0] + '.npy'
         save_path = os.path.join(save_dir, save_filename)
         

@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import Dataset
 from torchvision.transforms import Compose
 
-from dataset.transform import Resize, NormalizeImage, PrepareForNet, Crop
+from dataset.transform import Resize, NormalizeImage, PrepareForNet, Crop, DepthToDisparity
 
 # ['DIML_indoor_1', 'DIML_indoor_2', 'ScanNet']
 class DIML(Dataset):
@@ -14,7 +14,8 @@ class DIML(Dataset):
         self.size = size
         
         with open(filelist_path, 'r') as f:
-            self.filelist = f.read().splitlines()
+            self.filelist = [line.strip() for line in f if line.strip()]  # 过滤掉空行
+            # self.filelist = f.read().splitlines()
         
         net_w, net_h = size
         self.transform = Compose([
@@ -32,18 +33,24 @@ class DIML(Dataset):
         ] + ([Crop(size[0])] if self.mode == 'train' else []))
     
     def __getitem__(self, item):
+        if item >= len(self.filelist):
+            raise IndexError("Index out of range")
         img_path = self.filelist[item].split()[0]
         depth_path = self.filelist[item].split()[1]
        
         # 深度图除以1000才是真实尺度下的深度
         image = cv2.imread(img_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255.0
-        depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED).astype('float32') / 1000.0
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255.0 
+        if 'nyu2_train' in img_path:
+            depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED).astype('float32') * 10
+        else:                    
+            depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED).astype('float32') / 1000.0  
 
         sample = self.transform({'image': image, 'depth': depth})
 
         sample['image'] = torch.from_numpy(sample['image'])
         sample['depth'] = torch.from_numpy(sample['depth'])
+        
         sample['valid_mask'] = sample['depth'] > 0
         sample['image_path'] = self.filelist[item].split()[0]
 
