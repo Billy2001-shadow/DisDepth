@@ -117,6 +117,51 @@ def compute_errors(gt, pred):
     return dict(d1=d1, d2=d2, d3=d3, abs_rel=abs_rel, rmse=rmse, log10=log10, rmse_log=rmse_log,
                 silog=silog, sq_rel=sq_rel)
 
+
+	
+
+# def recover_metric_depth(pred,depth,valid_mask):
+#     # recover_metric_depth(pred,depth,valid_mask)
+#     gt_mask = depth[valid_mask] 
+#     # 对gt_mask取反(先将gt转换到视差空间下)
+#     gt_mask = 1.0 / gt_mask
+#     pred_mask = pred[valid_mask]
+#     a, b = np.polyfit(pred_mask, gt_mask, deg=1)
+#     pred = a * pred + b
+#     # 再转换到深度空间下
+#     pred = 1.0 / pred 
+
+#     return pred
+
+def recover_metric_depth(pred, depth, valid_mask):
+    # recover_metric_depth(pred,depth,valid_mask)
+    gt_mask = depth[valid_mask] 
+    # 对gt_mask取反(先将gt转换到视差空间下)
+    gt_mask = 1.0 / gt_mask
+    pred_mask = pred[valid_mask]
+
+    # 标准化数据
+    pred_mask_mean = np.mean(pred_mask)
+    pred_mask_std = np.std(pred_mask)
+    gt_mask_mean = np.mean(gt_mask)
+    gt_mask_std = np.std(gt_mask)
+
+    pred_mask = (pred_mask - pred_mask_mean) / pred_mask_std
+    gt_mask = (gt_mask - gt_mask_mean) / gt_mask_std
+
+    a, b = np.polyfit(pred_mask, gt_mask, deg=1)
+
+    # 反标准化
+    pred = (pred - pred_mask_mean) / pred_mask_std
+    pred = a * pred + b
+    pred = pred * gt_mask_std + gt_mask_mean
+
+    # 再转换到深度空间下
+    pred = 1.0 / pred 
+
+    return pred
+
+
 def align_depth_least_square(
     gt_arr: np.ndarray,
     pred_arr: np.ndarray,

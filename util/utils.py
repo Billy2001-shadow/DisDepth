@@ -1,5 +1,6 @@
 import os
 import logging
+import numpy as np
 
 logs = set()
 
@@ -22,3 +23,5 @@ def init_log(name, level=logging.INFO):
     ch.setFormatter(formatter)
     logger.addHandler(ch)
     return logger
+
+

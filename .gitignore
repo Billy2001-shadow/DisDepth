@@ -2,6 +2,15 @@
 /checkpoints/
 /wandb/
 /exp/
+/generate_datasets/checkpoints/
+
+/dataset/**/*.txt
+/generate_datasets/**/*.txt
+/generate_datasets/**/*.png
+/test_images/**/*.png
+/test_images/**/*.jpg
+/vis_depth/**/*.png
+/vis_depth/**/*.jpg
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -31,12 +31,12 @@ from torchvision import transforms
 
 
 class ToTensor(object):
-    def __init__(self):
-        # self.normalize = transforms.Normalize(
-        #     mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        self.normalize = lambda x : x
+    def __init__(self,size=(224,224)):
+        self.normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        # self.normalize = lambda x : x
         # 和Resize的分辨率有很大的关系
-        self.resize = transforms.Resize((224,224))
+        self.resize = transforms.Resize(size)
         
 
     def __call__(self, sample):
@@ -81,20 +81,12 @@ class ToTensor(object):
 
 
 class NYUD(Dataset):
-    def __init__(self, filenames_file):
-        # import glob
-        # image paths are of the form <data_dir_root>/scene_#/scan_#/*.png
-        # self.image_files = glob.glob(
-        #     os.path.join(data_dir_root, '*', '*', '*.png'))
-        # self.depth_files = [r.replace(".png", "_depth.npy")
-        #                     for r in self.image_files]
-        # self.depth_mask_files = [
-        #     r.replace(".png", "_depth_mask.npy") for r in self.image_files]
-
+    def __init__(self, filenames_file,size=(224,224)):
+       
         with open(filenames_file, 'r') as f:
                 self.filenames = f.readlines()
 
-        self.transform = ToTensor()
+        self.transform = ToTensor(size)
 
     def __getitem__(self, idx):
         sample_path = self.filenames[idx]
@@ -107,31 +99,22 @@ class NYUD(Dataset):
         depth = np.asarray(Image.open(depth_path), dtype=np.float32) / 1000.0 # in meters
         depth = np.expand_dims(depth, axis=2)
         
-        # depth[depth > 8] = -1
-        # depth = depth[..., None]
         sample = dict(image=image, depth=depth)
-
-        # return sample
         sample = self.transform(sample)
-
-        if idx == 0:
-            print(sample["image"].shape)
-
         return sample
 
     def __len__(self):
         return len(self.filenames)
 
 
-def get_nyud_loader(data_dir_root, batch_size=1, **kwargs):
-    dataset = NYUD(data_dir_root)
-    return DataLoader(dataset, batch_size, **kwargs)
+def get_nyud_loader(data_dir_root, size=(224, 224)):
+    dataset = NYUD(data_dir_root, size)
+    return DataLoader(dataset, batch_size=1, shuffle=False,num_workers=4,pin_memory=True)
 
-# get_diode_loader(data_dir_root="datasets/diode/val/outdoor")
 
 
 if __name__ == '__main__':
-    valloader = get_nyud_loader(data_dir_root="/home/chenwu/DisDepth/dataset/splits/nyu/val.txt")
+    valloader = get_nyud_loader(data_dir_root="/home/chenwu/DisDepth/dataset/splits/val/nyu_val.txt")
     for idx, data in enumerate(valloader):
-        image,depth = data['image'],data['depth']  # image torch.Size([1, 3, 480, 640]) depth torch.Size([1, 1, 768, 1024])
+        image,depth = data['image'],data['depth']  # image torch.Size([1, 3, 224, 224]) depth torch.Size([1, 1, 480, 640])
         pass # debug point
