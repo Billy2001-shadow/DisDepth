@@ -2,9 +2,10 @@ import cv2
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from torchvision.transforms import Compose
+from torchvision.transforms import Compose, ColorJitter, GaussianBlur,Resize,Normalize,ToTensor
 
-from dataset.transform import Resize, NormalizeImage, PrepareForNet, Crop, DepthToDisparity
+# from dataset.transform import Resize, NormalizeImage, PrepareForNet, Crop, DepthToDisparity
+import torchvision.transforms as T
 
 from PIL import Image
 
@@ -19,19 +20,15 @@ class Relative(Dataset):
             self.filelist = [line.strip() for line in f if line.strip()]  # 过滤掉空行
             
         
-        net_w, net_h = size
+       
         self.transform = Compose([
-            Resize(
-                width=net_w,
-                height=net_h,
-                resize_target=True,
-                keep_aspect_ratio=False,
-                ensure_multiple_of=14,
-                resize_method='lower_bound',
-                image_interpolation_method=cv2.INTER_CUBIC,
-            ),
-            NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            PrepareForNet(),
+            # 色彩抖动：随机调整亮度、对比度、饱和度和色相
+            ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+            # 高斯模糊：使用3x3的卷积核
+            GaussianBlur(kernel_size=(3, 3), sigma=(0.1, 2.0)),
+            Resize(size),
+            ToTensor(),  # 将图像转换为张量(0-255归一化为0-1,并转换为C*H*W)
+            Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
     
     def __getitem__(self, item):
@@ -41,17 +38,20 @@ class Relative(Dataset):
 
         sample = {}
         
+         # 使用 PIL 直接读取图像
+        image = Image.open(img_path).convert('RGB')  # 使用PIL读取并转换为RGB格式
+        
+        # 应用数据增强和预处理
+        image = self.transform(image)
+        sample['image'] = image
 
-        image = Image.open(img_path)    
-        image = np.asarray(image, dtype=np.float32) / 255.0
-        sample = self.transform({'image': image})
-        
-        depth = np.load(depth_path).astype('float32')
+        depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
+        if depth is None:
+            raise ValueError(f"Failed to load depth image: {depth_path}")
+        depth = depth.astype(np.float32)
     
-        sample['image'] = torch.from_numpy(sample['image'])
-        sample['depth'] = torch.from_numpy(depth)
         
-      
+        sample['depth'] = torch.from_numpy(depth)
         sample['image_path'] = img_path
 
     

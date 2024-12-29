@@ -12,15 +12,17 @@ def check_paths(file_path):
         
         if not img_exists:
             print(f"Image path does not exist: {img_path}")
+            exit()
         if not depth_exists:
             print(f"Depth path does not exist: {depth_path}")
+            exit()
         
         if img_exists and depth_exists:
             print(f"Both paths exist: {img_path}, {depth_path}")
 
 if __name__ == "__main__":
     # 替换为你的txt文件路径
-    txt_file_path = "relative_depth_train.txt"
+    txt_file_path = "/home/chenwu/DisDepth/dataset/splits/train/indoor_train.txt"
     check_paths(txt_file_path)
 
 

@@ -33,7 +33,7 @@ parser.add_argument('--min_depth', default=0.001, type=float)
 parser.add_argument('--max_depth', default=10, type=float)
 # train
 parser.add_argument('--distributed',default=False, type=bool)
-parser.add_argument('--batch_size', default=32, type=int)
+parser.add_argument('--batch_size', default=96, type=int)
 parser.add_argument('--workers', default=16, type=int)
 parser.add_argument('--epochs', default=40, type=int)
 parser.add_argument('--lr', default=0.0001, type=float) # 调一调学习率是否可以加快收敛呢？ 0.000005 0.000008  00008
@@ -94,8 +94,8 @@ def main():
      # dataset, dataloader
     size = (args.input_width, args.input_height)  
 
-    trainset = Relative('dataset/splits/train/relative_depth_train.txt', 'train', size=size)
-    trainloader = DataLoader(trainset, batch_size=args.batch_size, pin_memory=True, num_workers=24,shuffle=True)
+    trainset = Relative('dataset/splits/train/indoor_train.txt', 'train', size=size)
+    trainloader = DataLoader(trainset, batch_size=args.batch_size, pin_memory=True, num_workers=16,shuffle=True)
 
     valloader = get_nyud_loader(data_dir_root=args.filenames_file_eval,size =size)
 
