@@ -11,6 +11,7 @@
 /test_images/**/*.jpg
 /vis_depth/**/*.png
 /vis_depth/**/*.jpg
+/pth_save/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

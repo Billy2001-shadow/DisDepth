@@ -6,18 +6,12 @@ from torchvision.transforms import Compose
 from dataset.transform import Resize, NormalizeImage, PrepareForNet
 
 
-class ETH3D(Dataset):
+class KITTI(Dataset):
     def __init__(self, filelist_path, size=(224, 224)):
+        
+        
         self.size = size
         
-        if 'indoor' in filelist_path:
-            self.min_depth = 0
-            self.max_depth = 10
-        elif 'outdoor' in filelist_path:
-            self.min_depth = 0
-            self.max_depth = 80
-
-
         with open(filelist_path, 'r') as f:
             self.filelist = f.read().splitlines()
         
@@ -51,7 +45,7 @@ class ETH3D(Dataset):
         sample['depth'] = torch.from_numpy(sample['depth'])
         sample['depth'] = sample['depth'] / 256.0  # convert in meters
         
-        sample['valid_mask'] = (sample['depth'] > self.max_depth) & (sample['depth'] <= self.max_depth) # sample['depth'] > 0
+        sample['valid_mask'] = (sample['depth'] > 0) & (sample['depth'] <= 80) # # sample['depth'] > 0 
         
         sample['image_path'] = img_path
         
@@ -61,8 +55,7 @@ class ETH3D(Dataset):
         return len(self.filelist)
     
 
-def get_eth3d_loader(data_dir_root, size=(224, 224)):
-    dataset = ETH3D(data_dir_root, size)
+def get_kitti_loader(data_dir_root, size=(224, 224)):
+    dataset = KITTI(data_dir_root, size)
     return DataLoader(dataset, batch_size=1, shuffle=False,num_workers=4,pin_memory=True)
 
-# get_diode_loader(data_dir_root="datasets/diode/val/outdoor")

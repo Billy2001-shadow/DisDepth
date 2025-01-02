@@ -94,8 +94,8 @@ def main():
      # dataset, dataloader
     size = (args.input_width, args.input_height)  
 
-    trainset = Relative('dataset/splits/train/indoor_train.txt', 'train', size=size)
-    trainloader = DataLoader(trainset, batch_size=args.batch_size, pin_memory=True, num_workers=16,shuffle=True)
+    trainset = Relative('dataset/splits/train/relative_depth_train.txt', 'train', size=size)
+    trainloader = DataLoader(trainset, batch_size=args.batch_size, pin_memory=True, num_workers=8,prefetch_factor=4,shuffle=True)
 
     valloader = get_nyud_loader(data_dir_root=args.filenames_file_eval,size =size)
 

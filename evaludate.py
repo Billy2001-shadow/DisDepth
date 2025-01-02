@@ -11,6 +11,12 @@ from tinyvit.dpt import TinyVitDpt
 from util.metric import recover_metric_depth, compute_errors, RunningAverageDict
 from dataset.nyu2 import get_nyud_loader
 
+from dataset.kitti import get_kitti_loader
+from dataset.ddad import get_ddad_loader
+from dataset.diode import get_diode_loader
+from dataset.eth3d import get_eth3d_loader
+
+
 from tqdm import tqdm
 
 if __name__ == '__main__':

@@ -5,69 +5,57 @@ import warnings
 import pprint
 import numpy as np
 import random
+from datetime import datetime
+
 import torch
-import torch.backends.cudnn as cudnn
+from tqdm import tqdm
 from torch.optim import AdamW
+from torch.utils.data import DataLoader
+import torch.nn.functional as F
+import torch.backends.cudnn as cudnn
 from torch.utils.tensorboard import SummaryWriter
 
 from tinyvit.dpt import TinyVitDpt
 from midas_loss import ScaleAndShiftInvariantLoss
-from dataset.relative import Relative
-
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-from util.metric import *
-from util.utils import init_log
 
 from dataset.nyu2 import get_nyud_loader
-import torch.nn.functional as F
+from dataset.kitti import get_kitti_loader
+from dataset.diode import get_diode_loader
+from dataset.ddad import get_ddad_loader
+from dataset.eth3d import get_eth3d_loader
+from dataset.dataloader import get_train_loader
+
+from util.utils import init_log
+from util.metric import recover_metric_depth, compute_errors, RunningAverageDict
+
 
 parser = argparse.ArgumentParser(description='Train TinyVit for Relative Depth Estimation')
 
 
 parser.add_argument('--input_height', default=224, type=int)
 parser.add_argument('--input_width', default=224, type=int) # 输入到网络中的size
-
 # train
 parser.add_argument('--distributed',default=False, type=bool)
-parser.add_argument('--batch_size', default=32, type=int)
+parser.add_argument('--batch_size', default=96, type=int)
 parser.add_argument('--workers', default=16, type=int)
 parser.add_argument('--epochs', default=40, type=int)
 parser.add_argument('--lr', default=0.0001, type=float) # 调一调学习率是否可以加快收敛呢？ 0.000005 0.000008  00008
 parser.add_argument('--save-path', default='exp/tinyvit',type=str)
-parser.add_argument('--w_silog', default=1.0, type=float)
-parser.add_argument('--w_grad', default=0.0, type=float)
+parser.add_argument('--filelist_path', default='/home/chenwu/DisDepth/dataset/splits/train/relative_depth_train.txt',type=str)
 # data augmentation
-parser.add_argument('--aug', default=True, type=bool)
-parser.add_argument('--do_random_rotate', default=False, type=bool)
-parser.add_argument('--random_crop', default=False, type=bool)
-parser.add_argument('--random_translate', default=False, type=bool)
-parser.add_argument('--degree', default=1.5, type=float) # 随机旋转正负1.5度
-parser.add_argument('--max_translation', default=100, type=int)
-parser.add_argument('--translate_prob', default=0.2, type=float)
 
-parser.add_argument('--do_kb_crop', default=False, type=bool)
-parser.add_argument('--avoid_boundary', default=False, type=bool) # 评估时eval_mask[45:471, 41:601] = 1
-
-# dataset
-parser.add_argument('--dataset', default='nyu', type=str)
-parser.add_argument('--filenames_file', default='/home/chenwu/TinyVit/data_split/nyu2_train.txt', type=str)
-parser.add_argument('--filenames_file_eval', default='/home/chenwu/TinyVit/data_split/nyu2_test.txt', type=str)
-parser.add_argument('--data_path', default='/data2/cw/sync/', type=str) # /data2/cw/sync
-parser.add_argument('--gt_path', default='/data2/cw/sync/', type=str) 
-parser.add_argument('--data_path_eval', default='/data2/cw/nyu2_test/', type=str)
-parser.add_argument('--gt_path_eval', default='/data2/cw/nyu2_test/', type=str)
-parser.add_argument('--use_shared_dict', default=False, type=bool)
-
+# dataset val
+parser.add_argument('--nyu_val', default='/home/chenwu/DisDepth/dataset/splits/val/nyu_val.txt', type=str)
+parser.add_argument('--kitti_val', default='/home/chenwu/DisDepth/dataset/splits/val/kitti_val.txt', type=str)
+parser.add_argument('--ddad_val', default='/home/chenwu/DisDepth/dataset/splits/val/ddad_val.txt', type=str)
+parser.add_argument('--diode_outdoor_val', default='/home/chenwu/DisDepth/dataset/splits/val/diode_outdoor_val.txt', type=str)
+parser.add_argument('--diode_indoor_val', default='/home/chenwu/DisDepth/dataset/splits/val/diode_indoor_val.txt', type=str) 
+parser.add_argument('--eth3d_indoor_val', default='/home/chenwu/DisDepth/dataset/splits/val/eth3d_indoor_val.txt', type=str) 
+parser.add_argument('--eth3d_outdoor_val', default='/home/chenwu/DisDepth/dataset/splits/val/eth3d_outdoor_val.txt', type=str) 
 
 parser.add_argument('--seed', '--rs', default=12, type=int,help='random seed (default: 0)') # default=12
-# parser.add_argument('--pretrained_from', default='/home/chenwu/DisDepth/exp/tinyvit/latest.pth', type=str,help='the trained model weight') #加载相对深度权重
 parser.add_argument('--pretrained_from', default='/home/chenwu/TinyVit/checkpoints/tiny_vit_5m_22kto1k_distill.pth', type=str,help='the trained model weight') #加载相对深度权重
 
-# DepthAnythingV2
-parser.add_argument('--encoder', type=str, default='vitl', choices=['vits', 'vitb', 'vitl', 'vitg'])
-
-# 训练集和测试集统一一下
 
 def main():
     args = parser.parse_args()
@@ -83,6 +71,7 @@ def main():
 
     logger = init_log('global', logging.INFO)
     logger.propagate = 0
+
     all_args = vars(args)
     logger.info('{}\n'.format(pprint.pformat(all_args)))
     writer = SummaryWriter(args.save_path)
@@ -91,14 +80,10 @@ def main():
     cudnn.benchmark = True  
 
     ############################################## Dataset Load ########################################################
-    # dataset, dataloader
-    size = (args.input_width, args.input_height)  # 网络输入大小
-
-    trainset = Relative('dataset/splits/relative_depth_train.txt', 'train', size=size)
-    trainloader = DataLoader(trainset, batch_size=args.batch_size, pin_memory=True, num_workers=24,shuffle=True)
-
-    valloader = get_nyud_loader(data_dir_root='dataset/splits/nyu/val.txt')
-
+     # dataloader
+    size = (args.input_width, args.input_height)  
+    trainloader  = get_train_loader(args, 'train')
+    valloader = get_nyud_loader(data_dir_root=args.filenames_file_eval,size =size)
 
     ###########################################################################################################################
 
@@ -143,7 +128,6 @@ def main():
         logger.info('epoch: {}/{}'.format(epoch, args.epochs))
         model.train()
         total_loss = 0
-
         ################################# Train loop ##########################################################
         for i, sample in enumerate(trainloader):
             optimizer.zero_grad()
@@ -153,9 +137,9 @@ def main():
                 img = img.flip(-1)
                 depth = depth.flip(-1)
                 
-            pred = model(img) # torch.Size([32, 1, 224, 224])  
-            pred = pred.squeeze(1) # 压缩到 torch.Size([32, 224, 224])
-            valid_mask = depth > 0
+            pred = model(img) 
+            pred = pred.squeeze(1)
+            valid_mask = depth >= 0 # 如果预测出来等于0的地方呢？
 
             loss = criterion(pred, depth, valid_mask)
            
@@ -181,29 +165,30 @@ def main():
         metrics =RunningAverageDict()
         with torch.no_grad():
             for batch_idx, sample in tqdm(enumerate(valloader),total=len(valloader)):
-                img, depth = sample['image'].cuda().float(), sample['depth'].cuda()[0]  # torch.Size([1, 3, 480, 640]) torch.Size([480, 640, 1])
+                img, depth = sample['image'].cuda().float(), sample['depth'].cuda()[0]  # torch.Size([1, 3, 224, 224]) depth torch.Size([1, 1, 480, 640])
                 
-                pred = model(img) # torch.Size([1,1, 480, 640])     
-                pred = F.interpolate(pred, depth.shape[-2:], mode='bilinear',align_corners=True)  # nearest  bilinear | bicubic 
-                pred = pred.squeeze().cpu().numpy()
-                depth = depth.squeeze().cpu().numpy()
+                pred = model(img) # torch.Size([1,1, 224, 224])     
+                pred = F.interpolate(pred, depth.shape[-2:], mode='bilinear',align_corners=True)  # nearest  bilinear | bicubic torch.Size([1, 1, 480, 640])
+                pred = pred.squeeze().cpu().numpy()   # torch.Size([480, 640]) 
+                depth = depth.squeeze().cpu().numpy() # torch.Size([480, 640]) 
                 
                 valid_mask = (depth > args.min_depth) & (depth <= args.max_depth)
                 eval_mask = np.zeros(valid_mask.shape)
                 eval_mask[45:471, 41:601] = 1 # eigen crop for nyu
                 valid_mask = np.logical_and(valid_mask, eval_mask)
 
-                # 在这里对齐pred和depth
-                pred = align_depth_least_square(depth,pred,valid_mask,return_scale_shift=False)
-                
-                metrics.update(compute_errors(depth[valid_mask], pred[valid_mask]))
+                # 对其pred和depth  整理一个API出来
+                pred = recover_metric_depth(pred,depth,valid_mask)
+            
+                metrics.update(compute_errors(depth[valid_mask], pred[valid_mask])) # 第二步1.0 / pred[valid_mask]
         
             metrics = {k: round(v, 3) for k, v in metrics.get_value().items()}
             print(f"Metrics: {metrics}")
 
             # 将指标记录到txt文件中
             with open(os.path.join(args.save_path, 'metrics.txt'), 'a') as f:
-                f.write(f"Epoch {epoch}: {metrics}\n")
+                current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                f.write(f"Epoch {epoch} [{current_time}]: {metrics}\n")
 
         ############################################################################################################
         checkpoint = {
@@ -216,14 +201,27 @@ def main():
         ############################################################################################################
 
 
-       
 
 if __name__ == '__main__':
     main()
 
 
+    # valloader = get_nyud_loader(data_dir_root="/home/chenwu/DisDepth/dataset/splits/val/nyu_val.txt")
+    # valloader = get_kitti_loader(data_dir_root="/home/chenwu/DisDepth/dataset/splits/val/kitti_val.txt")
+    # valloader = get_diode_loader(data_dir_root="/home/chenwu/DisDepth/dataset/splits/val/diode_outdoor_val.txt") # indoor
+    # valloader = get_ddad_loader(data_dir_root="/home/chenwu/DisDepth/dataset/splits/val/ddad_val.txt")
+    # valloader = get_eth3d_loader(data_dir_root="/home/chenwu/DisDepth/dataset/splits/val/eth3d_indoor_val.txt") # outdoor
 
+    # for idx, data in enumerate(valloader):
+    #     # torch.Size([1, 3, 224, 288])  torch.Size([1, 480, 640]) torch.Size([1, 480, 640])
+    #     image,depth,valid_mask = data['image'],data['depth'],data['valid_mask']  # image torch.Size([1, 3, 224, 224]) depth torch.Size([1, 1, 480, 640])
+    #     pass # debug point
 
-
-
+# nyu:torch.Size([1, 3, 224, 288]) 
+# kitti:torch.Size([1, 3, 224, 736])
+# diode_indoor:torch.Size([1, 3, 224, 288]) 
+# diode_outdoor:torch.Size([1, 3, 224, 288])
+# ddad:torch.Size([1, 3, 224, 352])
+# eth3d_indoor: torch.Size([1, 3, 224, 352])
+# eth3d_outdoor: torch.Size([1, 3, 224, 320])
 

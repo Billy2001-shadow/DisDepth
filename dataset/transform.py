@@ -241,11 +241,6 @@ class PrepareForNet(object):
             sample["semseg_mask"] = sample["semseg_mask"].astype(np.float32)
             sample["semseg_mask"] = np.ascontiguousarray(sample["semseg_mask"])
 
-        # Disparity是否需要在这里调整一下？ chenwu add
-        if "disparity" in sample:
-            disparity = sample["disparity"].astype(np.float32)
-            sample["disparity"] = np.ascontiguousarray(disparity)
-
         return sample
 
 
@@ -278,77 +273,5 @@ class Crop(object):
             
         if "semseg_mask" in sample:
             sample["semseg_mask"] = sample["semseg_mask"][h_start: h_end, w_start: w_end]
-        
-        # Disparity是否需要在这里调整一下？ chenwu add
-        if "disparity" in sample:
-            sample["disparity"] = sample["disparity"][h_start: h_end, w_start: w_end]
             
-        return sample
-
-class DepthToDisparity(object):
-    """Convert depth to disparity. Removes depth from sample.
-    """
-
-    def __init__(self, eps=1e-4):
-        self.__eps = eps
-
-    def __call__(self, sample):
-        assert "depth" in sample
-
-    
-        sample["disparity"] = np.zeros_like(sample["depth"])
-        sample["disparity"][sample["depth"] >= self.__eps] = (
-            1.0 / sample["depth"][sample["depth"] >= self.__eps]
-        )
-
-        sample["depth"] = sample["disparity"]
-
-        return sample    
-
-# class DepthToDisparity(object):
-#     """Convert depth to disparity. Removes depth from sample.
-#     """
-
-#     def __init__(self, eps=1e-4):
-#         self.__eps = eps
-
-#     def __call__(self, sample):
-#         assert "depth" in sample
-
-#         sample["mask"][sample["depth"] < self.__eps] = False
-
-#         sample["disparity"] = np.zeros_like(sample["depth"])
-#         sample["disparity"][sample["depth"] >= self.__eps] = (
-#             1.0 / sample["depth"][sample["depth"] >= self.__eps]
-#         )
-
-#         del sample["depth"]
-
-#         return sample
-
-
-class DisparityToDepth(object):
-    """Convert disparity to depth. Removes disparity from sample.
-    """
-
-    def __init__(self, eps=1e-4):
-        self.__eps = eps
-
-    def __call__(self, sample):
-        assert "disparity" in sample
-
-        disp = np.abs(sample["disparity"])
-        sample["mask"][disp < self.__eps] = False
-
-        # print(sample["disparity"])
-        # print(sample["mask"].sum())
-        # exit()
-
-        sample["depth"] = np.zeros_like(disp)
-        sample["depth"][disp >= self.__eps] = (
-            1.0 / disp[disp >= self.__eps]
-        )
-
-        del sample["disparity"]
-
         return sample
