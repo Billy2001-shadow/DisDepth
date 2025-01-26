@@ -1,14 +1,23 @@
-def filter_lines(input_file, output_file, keywords):
-    with open(input_file, 'r') as file:
-        lines = file.readlines()
+# import os
 
-    with open(output_file, 'w') as file:
-        for line in lines:
-            if any(keyword in line for keyword in keywords):
-                file.write(line)
+# def write_jpg_paths_to_txt(folder_path, output_file):
+#     with open(output_file, 'w') as file:
+#         for root, dirs, files in os.walk(folder_path):
+#             for name in files:
+#                 if name.endswith('.jpg'):
+#                     file.write(os.path.join(root, name) + '\n')
 
-if __name__ == '__main__':
-    input_file = '/home/chenwu/DisDepth/dataset/splits/DIML/multi_train_files_with_gt_ablation_cls4+.txt'
-    output_file = '/home/chenwu/DisDepth/dataset/splits/DIML/filtered_train_files.txt'
-    keywords = ['DIML_indoor_1', 'DIML_indoor_2', 'ScanNet']
-    filter_lines(input_file, output_file, keywords)
+# # 使用示例
+# folder_path = '/mnt/chenwu/Relative_depth/NYU/imgs'  # 替换为你的文件夹路径
+# output_file = '/home/chenwu/DisDepth/dataset/splits/train/NYU.txt'  # 替换为你的输出文件路径
+# write_jpg_paths_to_txt(folder_path, output_file)
+
+input_file = '/home/chenwu/DisDepth/dataset/splits/train/NYU.txt'
+output_file = '/home/chenwu/DisDepth/dataset/splits/train/NYU_updated.txt'
+
+with open(input_file, 'r') as infile, open(output_file, 'w') as outfile:
+    for line in infile:
+        line = line.strip()
+        if line:
+            depth_path = line.replace('imgs', 'pseudo_label_uint8').replace('.jpg', '.png')
+            outfile.write(f"{line} {depth_path}\n")

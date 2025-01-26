@@ -8,16 +8,21 @@ from dataset.transform import Resize, NormalizeImage, PrepareForNet, Crop
 import torchvision.transforms as T
 
 
-# ['BlendMVS', 'Holopix50k', 'HRWSI','MegaDepth','ReDWeb']
 class DepthDataLoader(Dataset):
-    def __init__(self, filelist_path, mode, size=(224, 224)):
-        
+    def __init__(self, config, mode, size=(224, 224)):
         self.mode = mode
         self.size = size
+
+        train_splits_path = config.filelist_path
+        datasets = config.datasets 
+
+        self.filelist = []
+    
+        for dataset in datasets:
+            filelist_path = f"{train_splits_path}/{dataset}.txt"
+            with open(filelist_path, 'r') as f:
+                self.filelist.extend([line.strip() for line in f if line.strip()])  # 过滤掉空行
         
-        with open(filelist_path, 'r') as f:
-            self.filelist = [line.strip() for line in f if line.strip()]  # 过滤掉空行
-            
         net_w, net_h = size
         self.transform = Compose([
             Resize(
@@ -34,38 +39,57 @@ class DepthDataLoader(Dataset):
         ] + ([Crop(size[0])] if self.mode == 'train' else []))
     
     def __getitem__(self, item):
-
+        
+        
         img_path = self.filelist[item].split()[0]
         depth_path = self.filelist[item].split()[1]
 
         sample = {}
+
+        try:
+            # 读取图像
+            image = cv2.imread(img_path)
+            if image is None:
+                print(f"Warning: Failed to read image at {img_path}, skipping this sample.")
+                return None  # 返回 None 跳过该样本
+            
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255.0
+            
+            # 读取深度图
+            depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED).astype(np.float32)
         
-         # 使用 PIL 直接读取图像
-        image = cv2.imread(img_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255.0
+            
+            if depth is None:
+                print(f"Warning: Failed to read depth map at {depth_path}, skipping this sample.")
+                return None  # 返回 None 跳过该样本
 
-        depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
-        if depth is None:
-            raise ValueError(f"Failed to load depth image: {depth_path}")
-        depth = depth.astype(np.float32)
-
+        except Exception as e:
+            # 打印哪个文件出现问题
+            print("depth_path", depth_path)
+            if "image" in str(e):
+                print(f"Error reading image: {img_path}, skipping this sample.")
+            elif "depth" in str(e):
+                print(f"Error reading depth map: {depth_path}, skipping this sample.")
+            else:
+                print(f"Error processing sample {item}: {e}. Skipping this sample.")
+            return None  # 跳过当前样本
+        
+        # 应用数据增强和预处理
         sample = self.transform({'image': image, 'depth': depth})
-
+        
         sample['image'] = torch.from_numpy(sample['image'])
         sample['depth'] = torch.from_numpy(sample['depth'])
-
         sample['image_path'] = img_path
-
-    
+        
         return sample
 
     def __len__(self):
         return len(self.filelist)
-
+    
 def get_train_loader(config , mode ):
     size = (config.input_height,config.input_width)
-    dataset = DepthDataLoader(config.filelist_path,mode, size)
-    return DataLoader(dataset, config.batch_size ,shuffle=True,num_workers= config.workers,pin_memory=True)
+    dataset = DepthDataLoader(config, mode, size)
+    return DataLoader(dataset, config.batch_size ,shuffle=True,num_workers= config.workers,pin_memory=True) # num_workers= config.workers
 
 
 if __name__ == '__main__':

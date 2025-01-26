@@ -22,7 +22,7 @@ def check_paths(file_path):
 
 if __name__ == "__main__":
     # 替换为你的txt文件路径
-    txt_file_path = "/home/chenwu/DisDepth/dataset/splits/train/indoor_train.txt"
+    txt_file_path = "/home/chenwu/DisDepth/dataset/splits/train/NYU_updated.txt" 
     check_paths(txt_file_path)
 
 
