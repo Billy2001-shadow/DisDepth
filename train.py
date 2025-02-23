@@ -36,7 +36,7 @@ parser.add_argument('--max_depth', default=10, type=float)
 # train
 parser.add_argument('--distributed',default=False, type=bool)
 parser.add_argument('--batch_size', default=192, type=int)
-parser.add_argument('--workers', default=4, type=int)
+parser.add_argument('--workers', default=6, type=int)
 parser.add_argument('--epochs', default=40, type=int)
 parser.add_argument('--lr', default=0.0001, type=float) # 调一调学习率是否可以加快收敛呢？ 0.000005 0.000008  00008
 parser.add_argument('--save-path', default='exp/tinyvit',type=str)

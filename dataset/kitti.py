@@ -83,7 +83,7 @@ class ToTensor(object):
         else:
             return img
 
-
+# 修改，之前的crop是((44, 153, 1197, 371))   现在修改为((44, 152, 1197, 370)) 
 class KITTI(Dataset):
     def __init__(self, filenames_file,size=(224,224)):
        
@@ -100,19 +100,27 @@ class KITTI(Dataset):
 
         # Crop the RGB image (Garg Crop)
         image = Image.open(image_path).convert('RGB')  # 确保是 RGB 格式
+        image_height = image.height
+        image_width = image.width
+        
+        crop_size = (0.03594771 * image_width,0.40810811 * image_height,0.96405229 * image_width,0.99189189 * image_height)
+        # image = image.crop(crop_size)
         image = image.crop((44, 153, 1197, 371))  # (left, upper, right, lower) # 218, 1153 
         image = image.resize((1184, 224), Image.BILINEAR) # (1185, 224)
         image = np.asarray(image, dtype=np.float32) / 255.0 # (224, 1184, 3) # -65
 
         # 对depth也进行resize处理，进行最近邻插值
         depth = Image.open(depth_path)
-        depth = depth.crop((44, 153, 1197, 371))  # (left, upper, right, lower) # 218, 1153
-        depth = depth.resize((1184, 224), Image.NEAREST) # (1185, 224)
+        depth = depth.crop((44, 153, 1197, 371))  # (left, upper, right, lower) # 218, 1153   1242,375
+        # depth = depth.crop(crop_size)
+        # depth = depth.resize((1184, 224), Image.NEAREST) # (1185, 224) 评估的时候直接插值到218, 1153
         depth = np.asarray(depth, dtype=np.float32) / 256.0 # in meters
         depth = np.expand_dims(depth, axis=2)
         
         sample = dict(image=image, depth=depth)
         sample = self.transform(sample)
+        sample['image_path'] = image_path
+
         return sample
 
     def __len__(self):

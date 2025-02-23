@@ -80,6 +80,7 @@ class NYUD(Dataset):
         
         sample = dict(image=image, depth=depth)
         sample = self.transform(sample)
+        sample['image_path'] = image_path
         return sample
 
     def __len__(self):

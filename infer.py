@@ -16,17 +16,17 @@ from tinyvit.dpt import TinyVitDpt
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='TinyVit Infer for Relative Depth Estimation')
     
-    parser.add_argument('--img-path', default='rgb_00017.jpg',type=str)
+    parser.add_argument('--img-path', default='/home/chenwu/DisDepth/dataset/splits/val/nyu_val.txt',type=str)
     parser.add_argument('--input_height', default=224, type=int)
     parser.add_argument('--input_width', default=224, type=int) # 输入到网络中的size
     parser.add_argument('--input-size', type=int, default=224)
-    parser.add_argument('--outdir', type=str, default='./vis_depth')
+    parser.add_argument('--outdir', type=str, default='./vis')
     
     
     parser.add_argument('--pred-only', dest='pred_only', action='store_true', help='only display the prediction')
     parser.add_argument('--grayscale', dest='grayscale', action='store_true', help='do not apply colorful palette')
     
-    parser.add_argument('--pretrained-from', type=str, default='exp/tinyvit/TinyVit_relative_12_25_00_43.pth')  # TinyVit_relative_12_24_08_55
+    parser.add_argument('--pretrained-from', type=str, default='exp/tinyvit/latest_epoch_39.pth')  # TinyVit_relative_12_24_08_55
 
     args = parser.parse_args()
     

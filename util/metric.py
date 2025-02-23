@@ -172,6 +172,21 @@ def recover_metric_depth(pred, depth, valid_mask):
 
 
 
+def align_depth_least_square(prediction, target, mask, depth_cap=10):
+
+    # Transform predicted disparity to aligned depth
+    target_disparity = np.zeros_like(target)
+    target_disparity[mask == 1] = 1.0 / target[mask == 1]
+   
+    scale, shift = compute_scale_and_shift(prediction, target_disparity, mask)
+    prediction_aligned = scale * prediction + shift
+    # 限制最大深度为10m
+    disparity_cap = 1.0 / depth_cap
+    prediction_aligned[prediction_aligned < disparity_cap] = disparity_cap 
+
+    prediction_depth = 1.0 / prediction_aligned
+
+    return prediction_depth
 
 
 def compute_scale_and_shift(prediction, target, mask):

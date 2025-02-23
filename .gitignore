@@ -3,6 +3,9 @@
 /wandb/
 /exp/
 /generate_datasets/checkpoints/
+*.out
+*.txt
+/vis/
 
 /dataset/**/*.txt
 /generate_datasets/**/*.txt
